@@ -7,45 +7,22 @@ st.set_page_config(
 )
 
 MODELS = [
+    "llama3.1-8b",
     "llama3.1-70b",
     "claude-3-5-sonnet",
     "mistral-large2",
 ]
 
-SYSTEM_PROMPT = """You are a SQL analyst for Revenue Operations. Explain SQL to business users who don't write SQL.
-
-Given a SQL statement, respond with these sections using markdown:
-
-## What this query does
-Plain business English. Use RevOps terms (pipeline, ARR, bookings). No jargon.
-
-## How it works
-Numbered steps explaining each clause in business terms.
-
-## Permission check
-List all tables/views referenced. Flag sensitive schemas or WRITE operations (INSERT/UPDATE/DELETE/DROP).
-
-## Business considerations
-- Date filters limiting data
-- Aggregations hiding detail
-- NULL handling excluding records
-- Hardcoded values needing updates
-- Filters silently excluding data
-
-## Data normalization
-Is the data denormalized? Many joins (normalized) or wide flat tables (denormalized)? JSON/VARIANT columns?
-
-Be concise. Use bullets and bold for scannability."""
+SYSTEM_PROMPT = "Explain this SQL to a non-technical RevOps user. Cover: what it does in business terms, how it works step by step, tables referenced and any permission concerns, business considerations (filters, aggregations, hardcoded values), and whether data looks normalized or denormalized. Use markdown headers and bullets. Be concise."
 
 
 def explain_sql(sql_text: str, model: str, user_role: str | None = None) -> str:
-    prompt = f"Analyze this SQL:\n\n```sql\n{sql_text}\n```"
+    prompt = SYSTEM_PROMPT + "\n\n```sql\n" + sql_text + "\n```"
     if user_role:
-        prompt += f"\n\nUser's Snowflake role: {user_role}. Assess access to referenced objects."
-    full_prompt = SYSTEM_PROMPT + "\n\n" + prompt
-    # Escape single quotes for SQL string literal
-    escaped = full_prompt.replace("'", "''")
+        prompt += f"\n\nUser role: {user_role}. Assess access."
+    escaped = prompt.replace("\\", "\\\\").replace("'", "''")
     session = st.connection("snowflake").session()
+    session.sql("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 300").collect()
     result = session.sql(
         f"SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}', '{escaped}') AS response"
     ).collect()
@@ -62,7 +39,7 @@ with st.sidebar:
         "AI model",
         MODELS,
         index=0,
-        help="llama3.1-70b is fastest. claude-3-5-sonnet is most detailed.",
+        help="llama3.1-8b is fastest (~10s). llama3.1-70b and claude are more detailed but slower (~30-60s).",
     )
     user_role = st.text_input(
         "Your Snowflake role (optional)",
@@ -151,7 +128,7 @@ if st.button("Explain this query", type="primary", icon=":material/lightbulb:"):
         st.warning("Paste a SQL statement first.")
     else:
         with st.status("Analyzing your SQL...", expanded=True) as status:
-            st.write("Sending to AI model...")
+            st.write(f"Using {model} - this typically takes 10-30 seconds...")
             response = explain_sql(
                 sql_input.strip(),
                 model,

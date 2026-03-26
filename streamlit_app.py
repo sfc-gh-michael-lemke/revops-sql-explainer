@@ -1,5 +1,5 @@
+import json
 import streamlit as st
-from snowflake.cortex import complete
 
 st.set_page_config(
     page_title="RevOps SQL Explainer",
@@ -8,73 +8,57 @@ st.set_page_config(
 )
 
 MODELS = [
-    "claude-3-5-sonnet",
     "llama3.1-70b",
+    "claude-3-5-sonnet",
     "mistral-large2",
 ]
 
-SYSTEM_PROMPT = """You are a SQL analyst for a Revenue Operations team. Your audience is business users who do not write SQL.
+SYSTEM_PROMPT = """You are a SQL analyst for Revenue Operations. Explain SQL to business users who don't write SQL.
 
-Given a SQL statement, provide a structured analysis with these exact sections:
+Given a SQL statement, respond with these sections using markdown:
 
 ## What this query does
-Explain in plain business English what data this query retrieves or modifies. Use terms a RevOps analyst would understand (e.g., "pipeline", "bookings", "ARR", "quota attainment"). Avoid technical jargon.
+Plain business English. Use RevOps terms (pipeline, ARR, bookings). No jargon.
 
-## How it works (step by step)
-Walk through the query logic in numbered steps. Explain each clause (FROM, JOIN, WHERE, GROUP BY, etc.) in business terms. For example, instead of "LEFT JOIN on account_id", say "Connects each opportunity to its parent account, keeping opportunities even if the account record is missing."
+## How it works
+Numbered steps explaining each clause in business terms.
 
 ## Permission check
-List every table and view referenced in the query. For each one, note:
-- The fully qualified name (database.schema.table)
-- Whether it appears to be a production, staging, or dev table based on naming conventions
-- Flag any tables in sensitive schemas (e.g., containing "sensitive", "pii", "confidential", "hr", "compensation" in the name)
-- If the query uses INSERT, UPDATE, DELETE, MERGE, CREATE, DROP, or ALTER, warn prominently that this is a WRITE operation
+List all tables/views referenced. Flag sensitive schemas or WRITE operations (INSERT/UPDATE/DELETE/DROP).
 
 ## Business considerations
-Call out important things a RevOps person should know:
-- Date filters or time windows that limit the data
-- Aggregations that roll up detail (and what detail is lost)
-- NULL handling that could exclude records
-- CASE statements that apply business logic or categorization
-- Hardcoded values or magic numbers that may need updating
-- Whether the query could produce duplicate rows
-- Any filters that might silently exclude data (e.g., WHERE status != 'Deleted')
+- Date filters limiting data
+- Aggregations hiding detail
+- NULL handling excluding records
+- Hardcoded values needing updates
+- Filters silently excluding data
 
-## Data normalization assessment
-Assess whether the data appears denormalized:
-- Are there repeated values that suggest flattened/denormalized tables?
-- Does the query join many tables together (suggesting normalized source data)?
-- Are there wide tables with many columns from different domains?
-- Are there embedded arrays, JSON, or VARIANT columns?
-- Recommend whether this pattern is appropriate for the apparent use case
+## Data normalization
+Is the data denormalized? Many joins (normalized) or wide flat tables (denormalized)? JSON/VARIANT columns?
 
-Keep the tone professional but accessible. Use bullet points and bold text for scannability."""
+Be concise. Use bullets and bold for scannability."""
 
 
 def explain_sql(sql_text: str, model: str, user_role: str | None = None) -> str:
-    prompt = f"Analyze this SQL statement:\n\n```sql\n{sql_text}\n```"
+    prompt = f"Analyze this SQL:\n\n```sql\n{sql_text}\n```"
     if user_role:
-        prompt += (
-            f"\n\nThe user's current Snowflake role is: {user_role}. "
-            "Consider whether this role likely has access to the referenced objects "
-            "based on common naming conventions."
-        )
+        prompt += f"\n\nUser's Snowflake role: {user_role}. Assess access to referenced objects."
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
     ]
-    return complete(
-        model,
-        messages,
-        session=st.connection("snowflake").session(),
-        stream=True,
-    )
+    messages_json = json.dumps(messages)
+    session = st.connection("snowflake").session()
+    result = session.sql(
+        f"SELECT SNOWFLAKE.CORTEX.COMPLETE(?, PARSE_JSON(?)) AS response",
+        params=[model, messages_json],
+    ).collect()
+    return result[0]["RESPONSE"]
 
 
 st.title("RevOps SQL Explainer")
 st.caption(
-    "Paste any SQL statement and get a clear, business-friendly explanation "
-    "of what it does, how it works, and what to watch out for."
+    "Paste any SQL statement and get a clear, business-friendly explanation."
 )
 
 with st.sidebar:
@@ -82,12 +66,12 @@ with st.sidebar:
         "AI model",
         MODELS,
         index=0,
-        help="claude-3-5-sonnet is recommended for best results",
+        help="llama3.1-70b is fastest. claude-3-5-sonnet is most detailed.",
     )
     user_role = st.text_input(
         "Your Snowflake role (optional)",
         placeholder="e.g. SALES_ANALYST_RL",
-        help="If provided, the explanation will assess whether this role likely has access to the referenced tables",
+        help="If provided, the explanation will assess access to referenced tables",
     )
     st.caption("Built for RevOps by RevOps")
 
@@ -101,10 +85,12 @@ if st.button("Explain this query", type="primary", icon=":material/lightbulb:"):
     if not sql_input.strip():
         st.warning("Paste a SQL statement first.")
     else:
-        with st.spinner("Analyzing..."):
+        with st.status("Analyzing your SQL...", expanded=True) as status:
+            st.write("Sending to AI model...")
             response = explain_sql(
                 sql_input.strip(),
                 model,
                 user_role.strip() if user_role else None,
             )
-            st.write_stream(response)
+            status.update(label="Analysis complete", state="complete")
+        st.markdown(response)

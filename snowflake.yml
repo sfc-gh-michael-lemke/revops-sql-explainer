@@ -7,9 +7,6 @@ entities:
       database: SALES_DEV
       schema: PUBLIC
     query_warehouse: SNOWHOUSE
-    runtime_name: SYSTEM$ST_CONTAINER_RUNTIME_PY3_11
-    compute_pool: SYSTEM_COMPUTE_POOL_CPU
     main_file: streamlit_app.py
     artifacts:
       - streamlit_app.py
-      - pyproject.toml

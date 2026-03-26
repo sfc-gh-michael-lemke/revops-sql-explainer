@@ -22,7 +22,6 @@ def explain_sql(sql_text: str, model: str, user_role: str | None = None) -> str:
         prompt += f"\n\nUser role: {user_role}. Assess access."
     escaped = prompt.replace("\\", "\\\\").replace("'", "''")
     session = st.connection("snowflake").session()
-    session.sql("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 300").collect()
     result = session.sql(
         f"SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}', '{escaped}') AS response"
     ).collect()

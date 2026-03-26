@@ -1,5 +1,5 @@
+import json
 import streamlit as st
-from snowflake.cortex import complete
 
 st.set_page_config(
     page_title="RevOps SQL Explainer",
@@ -63,12 +63,12 @@ def explain_sql(sql_text: str, model: str, user_role: str | None = None) -> str:
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
     ]
-    return complete(
-        model,
-        messages,
-        session=st.connection("snowflake").session(),
-        stream=True,
-    )
+    messages_json = json.dumps(messages).replace("'", "\\'")
+    session = st.connection("snowflake").session()
+    result = session.sql(
+        f"SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}', PARSE_JSON($${messages_json}$$)) AS response"
+    ).collect()
+    return result[0]["RESPONSE"]
 
 
 st.title("RevOps SQL Explainer")
@@ -107,4 +107,4 @@ if st.button("Explain this query", type="primary", icon=":material/lightbulb:"):
                 model,
                 user_role.strip() if user_role else None,
             )
-            st.write_stream(response)
+            st.markdown(response)

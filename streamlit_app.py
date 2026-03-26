@@ -129,12 +129,13 @@ ORDER BY c.arr DESC""",
 if "sql_input" not in st.session_state:
     st.session_state.sql_input = ""
 
-sample = st.pills(
-    "Try a sample",
-    list(SAMPLE_QUERIES.keys()),
-    label_visibility="collapsed",
+sample_options = [""] + list(SAMPLE_QUERIES.keys())
+sample = st.selectbox(
+    "Try a sample query",
+    sample_options,
+    format_func=lambda x: "Select a sample..." if x == "" else x,
 )
-if sample and SAMPLE_QUERIES[sample] != st.session_state.sql_input:
+if sample and SAMPLE_QUERIES.get(sample, "") != st.session_state.sql_input:
     st.session_state.sql_input = SAMPLE_QUERIES[sample]
     st.rerun()
 

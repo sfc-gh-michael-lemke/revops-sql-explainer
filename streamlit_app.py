@@ -1,4 +1,3 @@
-import json
 import streamlit as st
 
 st.set_page_config(
@@ -43,15 +42,12 @@ def explain_sql(sql_text: str, model: str, user_role: str | None = None) -> str:
     prompt = f"Analyze this SQL:\n\n```sql\n{sql_text}\n```"
     if user_role:
         prompt += f"\n\nUser's Snowflake role: {user_role}. Assess access to referenced objects."
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": prompt},
-    ]
-    messages_json = json.dumps(messages)
+    full_prompt = SYSTEM_PROMPT + "\n\n" + prompt
+    # Escape single quotes for SQL string literal
+    escaped = full_prompt.replace("'", "''")
     session = st.connection("snowflake").session()
     result = session.sql(
-        f"SELECT SNOWFLAKE.CORTEX.COMPLETE(?, PARSE_JSON(?)) AS response",
-        params=[model, messages_json],
+        f"SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}', '{escaped}') AS response"
     ).collect()
     return result[0]["RESPONSE"]
 

@@ -4,12 +4,9 @@ entities:
     type: streamlit
     identifier:
       name: REVOPS_SQL_EXPLAINER
-      database: USER$MLEMKE
+      database: SALES_DEV
       schema: PUBLIC
     query_warehouse: SNOWHOUSE
-    runtime_name: SYSTEM$ST_CONTAINER_RUNTIME_PY3_11
-    external_access_integrations:
-      - PYPI_ACCESS_INTEGRATION
     main_file: streamlit_app.py
     artifacts:
       - streamlit_app.py
